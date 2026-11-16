@@ -30,8 +30,17 @@ Não abra `index.html` diretamente pelo protocolo `file://`: o código usa módu
 - **Dashboard:** indicadores da última simulação válida, evolução, composição de capital/aportes/rendimentos e cenários pessimista, moderado e otimista editáveis.
 - **Histórico:** salvar com nome, recuperar após recarregamento, abrir uma cópia, excluir com confirmação e comparar de duas a seis simulações com diferenças de parâmetros explícitas. Até 100 registros locais.
 - **Premissas:** fórmulas, referências oficiais, convenções de datas e limitações acessíveis dentro da aplicação.
+- **Login e perfil:** conta demonstrativa local, sessão persistente, edição de nome, e-mail e biografia, avatar por iniciais e logout. As ferramentas e o histórico continuam públicos.
 
 A aplicação inicia com uma simulação hipotética editável de R$ 5.000 + R$ 500/mês, por 20 anos, a 10% a.a. Alterações do formulário sinalizam resultados desatualizados e bloqueiam o salvamento até novo cálculo.
+
+## Conta demonstrativa local
+
+Clique em **Entrar** no cabeçalho. No primeiro acesso, a aplicação cria **Usuário InvestLab**, com e-mail `usuario@investlab.local` e senha `InvestLab123!`, sem iniciar sessão automaticamente. Após entrar, **Meu perfil** permite editar nome, e-mail e biografia. Ao alterar o e-mail, use o novo endereço no próximo login; as credenciais exibidas na tela de entrada acompanham essa alteração.
+
+A conta usa `investlab.account.v1` e a sessão usa `investlab.session.v1` no localStorage. Recarregar mantém a sessão; **Sair** remove somente a sessão, preservando perfil e histórico. A criação inicial nunca restaura valores padrão sobre edições já salvas. Alterações de perfil em outra aba exigem recarregar o formulário antes de salvar.
+
+Este acesso é demonstrativo: a senha é pública e os dados locais podem ser inspecionados ou alterados no navegador. Use dados fictícios. Não há backend, autenticação segura, cadastro de outras contas, troca de senha ou sincronização. Limpar os dados do site remove conta, sessão e histórico. Veja [especificação](specs/002-login-perfil/spec.md) e [validação](specs/002-login-perfil/validation.md).
 
 ## Cálculos e impostos
 
@@ -53,14 +62,17 @@ js/app.js                  Telas, formulários, validação e interações
 js/finance.js              Motor puro, modalidades, taxas e lotes tributários
 js/charts.js               Gráficos Chart.js e destruição de instâncias
 js/storage.js              Persistência, validação e versionamento do histórico
+js/auth.js                 Conta demonstrativa, sessão e validação do perfil local
+js/auth-ui.js              Login, perfil, cabeçalho e eventos entre abas
 public/favicon.svg         Identidade da aplicação
 tests/                     Testes financeiros, persistência e integração de DOM
 docs/                      Premissas, demonstração e validação
 specs/001-investlab/        Especificação, plano e tarefas
+specs/002-login-perfil/     Especificação, plano, tarefas e validação do acesso local
 .github/workflows/ci.yml   Testes e build pelo GitHub Actions
 ```
 
-O histórico usa a chave `investlab.simulations.v1`, com versão do formato e das regras financeiras. Dados inválidos ou incompatíveis não são sobrescritos silenciosamente. Limpar o armazenamento do site remove as simulações; não há sincronização ou conta.
+O histórico usa a chave `investlab.simulations.v1`, com versão do formato e das regras financeiras, separada da conta demonstrativa e da sessão. Dados inválidos ou incompatíveis não são sobrescritos silenciosamente. Limpar o armazenamento do site remove as simulações; não há sincronização.
 
 ## Publicação
 
@@ -80,7 +92,7 @@ O repositório contém o código da aplicação, recursos públicos, arquivos de
 
 - [Roteiro com três simulações e explicação do código](docs/APRESENTACAO.md).
 - [Verificações executadas e pendências](docs/VALIDACAO.md).
-- 38 testes automatizados aprovados, incluindo regressões de preservação do comparador e salto para o conteúdo.
+- 52 testes automatizados aprovados, incluindo cálculos, histórico, login, perfil, sessão, falhas de armazenamento e alterações entre abas.
 - `npm run build` aprovado; versão compilada carregada no Chrome por HTTP local.
 - Telas representativas inspecionadas em 360, 768 e 1280 pixels na revisão inicial, com nova verificação dos problemas corrigidos em janela de aproximadamente 960 pixels. A matriz completa de telas/resoluções e a revisão integral por teclado continuam pendentes; veja `docs/VALIDACAO.md`.
 - [Ajustes e comportamento após a revisão](docs/AJUSTES-2026-11-16.md): estado do comparador, acessibilidade, legenda do gráfico de perda e layout intermediário.

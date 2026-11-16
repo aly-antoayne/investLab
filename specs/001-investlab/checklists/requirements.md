@@ -1,4 +1,4 @@
-# Checklist de qualidade da especificação
+1# Checklist de qualidade da especificação
 
 **Especificação**: [InvestLab](../spec.md)  
 **Verificado em**: 2026-11-16

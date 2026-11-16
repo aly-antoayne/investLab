@@ -9,7 +9,7 @@ import { JSDOM } from 'jsdom';
 const bundled = await build({ entryPoints: ['js/app.js'], bundle: true, write: false, format: 'iife', loader: { '.css': 'empty' }, plugins: [{ name: 'charts-test-double', setup(builder) { builder.onLoad({ filter: /[\\/]charts\.js$/ }, () => ({ contents: 'export function clearCharts(){}; export function comparisonChart(){}; export function composition(){}; export function evolution(){};', loader: 'js' })); } }] });
 const html = (await readFile(new URL('../index.html', import.meta.url), 'utf8')).replace(/<script type="module"[^>]+><\/script>/, '');
 
-function app(hash = '', storageRaw = null) {
+function app(hash = '', storageRaw = null, accountData = {}, configure = () => {}) {
   const dom = new JSDOM(html, { url: 'http://localhost/' + hash, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   window.scrollTo = () => {};
@@ -18,6 +18,8 @@ function app(hash = '', storageRaw = null) {
   window.HTMLDialogElement.prototype.close = function () { this.open = false; };
   Object.defineProperty(window.crypto, 'randomUUID', { value: randomUUID });
   if (storageRaw !== null) window.localStorage.setItem('investlab.simulations.v1', storageRaw);
+  for (const [key, value] of Object.entries(accountData)) window.localStorage.setItem(key, value);
+  configure(window);
   window.eval(bundled.outputFiles[0].text);
   const document = window.document;
   return { dom, window, document,
@@ -204,5 +206,157 @@ test('pular para o conteúdo mantém a rota e os resultados e foca o conteúdo',
       assert.equal(a.document.activeElement.id, 'main');
       assert.equal(a.document.querySelector('main').innerHTML, content);
     }
+  } finally { a.dom.window.close(); }
+});
+
+const accountKey = 'investlab.account.v1';
+const sessionKey = 'investlab.session.v1';
+const accountData = a => Object.fromEntries([accountKey, sessionKey].flatMap(key => {
+  const value = a.window.localStorage.getItem(key);
+  return value === null ? [] : [[key, value]];
+}));
+async function enterAccount(a) {
+  if (a.window.location.hash !== '#login') await a.navigate('login');
+  a.set('email', ' USUARIO@INVESTLAB.LOCAL ');
+  a.set('password', 'InvestLab123!');
+  const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
+  a.submit();
+  await changed;
+}
+
+test('login, perfil, cancelamento, recarga e logout preservam dados e histórico', async () => {
+  const a = app('#login');
+  try {
+    assert.match(a.document.querySelector('.demo-credentials').textContent, /usuario@investlab.local/);
+    a.submit();
+    assert.equal(a.document.querySelector('#email').getAttribute('aria-invalid'), 'true');
+    a.set('email', 'usuario@investlab.local'); a.set('password', 'errada'); a.submit();
+    assert.match(a.document.querySelector('#auth-error').textContent, /E-mail ou senha inválidos/);
+    assert.equal(a.window.localStorage.getItem(sessionKey), null);
+    await enterAccount(a);
+    assert.ok(a.document.querySelector('#profile-form'));
+    assert.equal(a.document.querySelector('#password'), null);
+    assert.equal(a.document.querySelector('.profile-avatar').textContent, 'UI');
+    a.set('name', 'Descartar'); a.document.querySelector('#cancel-profile').click();
+    assert.equal(a.document.querySelector('#name').value, 'Usuário InvestLab');
+    a.set('name', 'Ana Érica'); a.set('email', 'ana@example.com'); a.set('bio', '<img src=x onerror=alert(1)>'); a.submit();
+    assert.match(a.document.querySelector('#account-controls').textContent, /Ana Érica/);
+    assert.equal(a.document.querySelector('.profile-avatar').textContent, 'AÉ');
+    assert.equal(a.document.querySelector('#bio').value, '<img src=x onerror=alert(1)>');
+    assert.equal(a.document.querySelector('main img'), null);
+    const reloaded = app('#perfil', null, accountData(a));
+    try { assert.equal(reloaded.document.querySelector('#name').value, 'Ana Érica'); } finally { reloaded.dom.window.close(); }
+    await a.navigate('simulador');
+    a.document.querySelector('#save-current').click();
+    a.document.querySelector('#simulation-name').value = 'Preservar'; a.submit(a.document.querySelector('#save-form'));
+    const history = a.window.localStorage.getItem('investlab.simulations.v1');
+    const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
+    a.document.querySelector('#logout').click(); await changed;
+    assert.equal(a.window.location.hash, '#inicio');
+    assert.equal(a.window.localStorage.getItem(sessionKey), null);
+    assert.equal(a.window.localStorage.getItem('investlab.simulations.v1'), history);
+    const signedOut = app('#login', history, accountData(a));
+    try {
+      assert.match(signedOut.document.querySelector('.demo-credentials').textContent, /ana@example.com/);
+      signedOut.set('email', 'ana@example.com'); signedOut.set('password', 'InvestLab123!');
+      const entered = new Promise(resolve => signedOut.window.addEventListener('hashchange', resolve, { once: true }));
+      signedOut.submit(); await entered;
+      assert.equal(signedOut.document.querySelector('#bio').value, '<img src=x onerror=alert(1)>');
+    } finally { signedOut.dom.window.close(); }
+  } finally { a.dom.window.close(); }
+});
+
+test('perfil sem sessão leva ao login e retorna ao perfil após entrar', async () => {
+  const a = app('#perfil');
+  try {
+    await new Promise(resolve => a.window.setTimeout(resolve, 20));
+    assert.equal(a.window.location.hash, '#login');
+    assert.equal(a.document.querySelector('#profile-form'), null);
+    await enterAccount(a);
+    assert.equal(a.window.location.hash, '#perfil');
+  } finally { a.dom.window.close(); }
+});
+
+test('falhas ao salvar e sair preservam formulário, perfil e sessão', async () => {
+  const a = app('#login');
+  try {
+    await enterAccount(a);
+    const original = a.window.localStorage.getItem(accountKey);
+    a.set('name', 'Nome atualizado');
+    const proto = Object.getPrototypeOf(a.window.localStorage);
+    const originalSet = proto.setItem;
+    proto.setItem = () => { throw new a.window.DOMException('Quota', 'QuotaExceededError'); };
+    a.submit();
+    assert.match(a.document.querySelector('#auth-error').textContent, /Sem espaço/);
+    assert.equal(a.document.querySelector('#name').value, 'Nome atualizado');
+    assert.equal(a.window.localStorage.getItem(accountKey), original);
+    proto.setItem = originalSet;
+    a.submit();
+    assert.equal(JSON.parse(a.window.localStorage.getItem(accountKey)).name, 'Nome atualizado');
+    proto.removeItem = () => { throw new a.window.DOMException('Bloqueado', 'SecurityError'); };
+    a.document.querySelector('#logout').click();
+    assert.ok(a.window.localStorage.getItem(sessionKey));
+    assert.ok(a.document.querySelector('#logout'));
+    assert.match(a.document.querySelector('#toast').textContent, /não foi concluída/);
+  } finally { a.dom.window.close(); }
+});
+
+test('alteração em outra aba bloqueia formulário desatualizado; logout externo exige login', async () => {
+  const a = app('#login');
+  try {
+    await enterAccount(a);
+    a.set('bio', 'Rascunho desta aba');
+    const external = JSON.parse(a.window.localStorage.getItem(accountKey));
+    external.name = 'Outra aba'; external.revision = 'external-revision';
+    a.window.localStorage.setItem(accountKey, JSON.stringify(external));
+    a.window.dispatchEvent(new a.window.StorageEvent('storage', { key: accountKey }));
+    assert.equal(a.document.querySelector('#bio').value, 'Rascunho desta aba');
+    a.submit();
+    assert.match(a.document.querySelector('#auth-error').textContent, /outra aba/);
+    assert.equal(JSON.parse(a.window.localStorage.getItem(accountKey)).name, 'Outra aba');
+    a.document.querySelector('#reload-profile').click();
+    assert.equal(a.document.querySelector('#name').value, 'Outra aba');
+    const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
+    a.window.localStorage.removeItem(sessionKey);
+    a.window.dispatchEvent(new a.window.StorageEvent('storage', { key: sessionKey }));
+    await changed;
+    assert.equal(a.window.location.hash, '#login');
+    assert.equal(a.document.querySelector('#profile-form'), null);
+  } finally { a.dom.window.close(); }
+});
+
+test('perfil corrompido não é sobrescrito e não interrompe áreas públicas', async () => {
+  const a = app('#login', null, { [accountKey]: '{broken' });
+  try {
+    assert.match(a.document.querySelector('#auth-error').textContent, /corrompido/);
+    assert.equal(a.window.localStorage.getItem(accountKey), '{broken');
+    await a.navigate('simulador'); a.submit();
+    assert.ok(a.document.querySelector('[data-testid=gross-result]'));
+  } finally { a.dom.window.close(); }
+});
+
+test('armazenamento bloqueado explica a falha no login e mantém o simulador utilizável', async () => {
+  const a = app('#login', null, {}, window => {
+    Object.defineProperty(window, 'localStorage', { get() { throw new window.DOMException('Bloqueado', 'SecurityError'); } });
+  });
+  try {
+    assert.match(a.document.querySelector('#auth-error').textContent, /bloqueou/);
+    a.set('email', 'usuario@investlab.local'); a.set('password', 'InvestLab123!'); a.submit();
+    assert.match(a.document.querySelector('#auth-error').textContent, /não foi concluída/);
+    assert.equal(a.document.querySelector('#logout'), null);
+    await a.navigate('simulador'); a.submit();
+    assert.ok(a.document.querySelector('[data-testid=gross-result]'));
+  } finally { a.dom.window.close(); }
+});
+
+test('falha de quota no login não anuncia sucesso nem cria sessão', () => {
+  const a = app('#login');
+  try {
+    Object.getPrototypeOf(a.window.localStorage).setItem = () => { throw new a.window.DOMException('Quota', 'QuotaExceededError'); };
+    a.set('email', 'usuario@investlab.local'); a.set('password', 'InvestLab123!'); a.submit();
+    assert.match(a.document.querySelector('#auth-error').textContent, /Sem espaço/);
+    assert.equal(a.window.localStorage.getItem(sessionKey), null);
+    assert.equal(a.window.location.hash, '#login');
+    assert.equal(a.document.querySelector('#logout'), null);
   } finally { a.dom.window.close(); }
 });
