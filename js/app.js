@@ -1,4 +1,5 @@
 import '../css/styles.css';
+import '../css/stitch.css';
 import { PRODUCTS, RULES_VERSION, annualRate, currency, defaults, isCrypto, numberBR, parseBR, percent, rateDescription, resultLabel, simulate, validate } from './finance.js';
 import { deleteSimulation, readHistory, saveSimulation } from './storage.js';
 import { clearCharts, comparisonChart, composition, evolution } from './charts.js';
@@ -148,8 +149,15 @@ function yearlyTable(result) {
   return `<div class="panel details-panel"><details><summary>Ver evolução em valores</summary><div class="details-content table-scroll" role="region" aria-label="Evolução em valores" tabindex="0"><table><caption class="sr-only">Evolução do patrimônio bruto</caption><thead><tr><th>Tempo</th><th>Total investido</th><th>Patrimônio bruto</th><th>Rendimento bruto</th></tr></thead><tbody>${rows.map(point => `<tr><td>${point.month} meses</td><td>${currency(point.invested)}</td><td>${currency(point.gross)}</td><td>${currency(point.gross - point.invested)}</td></tr>`).join('')}</tbody></table></div></details></div>`;
 }
 function renderSimulator() {
-  main.innerHTML = heading('DO PRESENTE PARA O SEU FUTURO', 'Dê tempo aos seus planos.', 'Explore o potencial do seu dinheiro, um mês de cada vez.') + `<div class="sim-layout"><section class="panel parameter-panel" aria-labelledby="parameters-title"><div class="panel-head"><div><h2 id="parameters-title" class="panel-title">Sua próxima possibilidade</h2><p class="panel-subtitle">Ajuste os valores. Imagine o amanhã.</p></div><span class="panel-icon">${icon('sliders')}</span></div><form id="sim-form" novalidate><div class="sim-form-fields">${sharedFields(currentInput)}<div class="form-divider"></div>${configFields(currentInput)}</div><button type="submit" class="button primary w-full">Simular meu investimento ${icon('arrow')}</button><p class="form-footnote">Sem cadastro. Sem compromisso. Só possibilidades.</p></form></section><section class="results" aria-label="Resultado da simulação"><div id="stale-sim" class="stale-banner" role="status" hidden>Parâmetros alterados. Clique em “Simular meu investimento” para atualizar os resultados.</div><div id="sim-results" class="results"></div></section></div>`;
+  main.innerHTML = heading('SIMULAÇÃO E APRENDIZADO', 'Simulador interativo de projeções', 'Configure suas hipóteses e acompanhe o patrimônio, os aportes e as deduções estimadas.') + `<div class="sim-layout"><section class="panel parameter-panel" aria-labelledby="parameters-title"><div class="panel-head"><div><h2 id="parameters-title" class="panel-title">Parâmetros da projeção</h2><p class="panel-subtitle">Ajuste os valores. Imagine o amanhã.</p></div><button id="reset-sim" type="button" class="text-button">Redefinir</button></div><form id="sim-form" novalidate><div class="sim-form-fields">${sharedFields(currentInput)}<div class="form-divider"></div>${configFields(currentInput)}</div><button type="submit" class="button primary w-full">Simular meu investimento ${icon('arrow')}</button><p class="form-footnote">Sem cadastro. Sem compromisso. Só possibilidades.</p></form></section><section class="results" aria-label="Resultado da simulação"><div id="stale-sim" class="stale-banner" role="status" hidden>Parâmetros alterados. Clique em “Simular meu investimento” para atualizar os resultados.</div><div id="sim-results" class="results"></div></section></div>`;
   paintSimResults();
+  $('#reset-sim').addEventListener('click', () => {
+    currentInput = defaults();
+    currentResult = simulate(currentInput);
+    clearCharts();
+    renderSimulator();
+    notify('Parâmetros redefinidos. Seu histórico foi preservado.');
+  });
   const form = $('#sim-form');
   attachFormBehavior(form, () => { $('#stale-sim').hidden = false; $('#save-current').disabled = true; });
   form.addEventListener('submit', event => {
@@ -183,7 +191,12 @@ function renderComparator() {
     compareSharedInput = null;
     compareSourceInput = currentInput;
   }
-  main.innerHTML = heading('MAIS CLAREZA PARA ESCOLHER', 'Compare possibilidades.', 'O mesmo ponto de partida. Diferentes caminhos para o seu patrimônio.') + `<form id="compare-form" class="panel wide-panel" novalidate><div class="panel-head"><div><h2 class="panel-title">Um ponto de partida em comum</h2><p class="panel-subtitle">Capital, aporte, prazo e data iguais para todas as alternativas.</p></div><span class="panel-icon">${icon('compare')}</span></div><div class="shared-fields">${sharedFields(compareSharedInput ?? currentInput)}</div><div class="comparison-grid">${compareInputs.map((input, index) => `<div class="comparison-option"><div class="option-number">ALTERNATIVA 0${index + 1}<span class="option-color" style="background:${PRODUCTS[input.type].color}"></span></div>${configFields(input, `slot${index}_`)}</div>`).join('')}</div><button class="button primary" type="submit">Comparar investimentos ${icon('arrow')}</button><p id="compare-dirty" class="field-hint" role="status" hidden>Parâmetros alterados. Atualize a comparação para aplicar as mudanças.</p></form><div id="compare-results" class="compare-results"></div>`;
+  main.innerHTML = heading('QUATRO ALTERNATIVAS EM UMA MESMA BASE', 'Comparador de investimentos', 'O mesmo ponto de partida. Diferentes caminhos para o seu patrimônio.') + `<form id="compare-form" class="panel wide-panel" novalidate><div class="panel-head"><div><h2 class="panel-title">Premissas compartilhadas</h2><p class="panel-subtitle">Capital, aporte, prazo e data iguais para todas as alternativas.</p></div><button id="sync-comparison" type="button" class="button light">Sincronizar com o simulador</button></div><div class="shared-fields">${sharedFields(compareSharedInput ?? currentInput)}</div><div class="comparison-grid">${compareInputs.map((input, index) => `<div class="comparison-option"><div class="option-number">ALTERNATIVA 0${index + 1}<span class="option-color" style="background:${PRODUCTS[input.type].color}"></span></div>${configFields(input, `slot${index}_`)}</div>`).join('')}</div><button class="button primary" type="submit">Comparar investimentos ${icon('arrow')}</button><p id="compare-dirty" class="field-hint" role="status" hidden>Parâmetros alterados. Atualize a comparação para aplicar as mudanças.</p></form><div id="compare-results" class="compare-results"></div>`;
+  $('#sync-comparison').addEventListener('click', () => {
+    compareSharedInput = { ...currentInput };
+    renderComparator();
+    notify('Premissas atualizadas com a última simulação válida.');
+  });
   const form = $('#compare-form');
   attachFormBehavior(form, () => { $('#compare-dirty').hidden = false; });
   const run = () => {
@@ -208,7 +221,7 @@ function renderDashboard() {
   const result = currentResult;
   const input = currentInput;
   const scenarioBase = Math.min(100, result.annual * 100);
-  main.innerHTML = heading('ENXERGUE O CAMINHO INTEIRO', 'Seu futuro, em perspectiva.', 'Uma visão da última simulação válida. Cada indicador conta uma parte da história.') + `${resultHero(input, result)}<div class="section-spacing">${metrics(input, result)}</div><div class="dashboard-grid"><div class="panel chart-panel"><div class="panel-head"><div><h2 class="panel-title">Evolução do patrimônio</h2><p class="panel-subtitle">Projeção bruta · ${esc(PRODUCTS[input.type].name)}</p></div><span class="chart-tag">${input.months} meses</span></div><div class="chart-area"><canvas id="dashboard-line" role="img" aria-label="Evolução patrimonial. Valores na tabela de evolução."></canvas></div></div><div class="panel chart-panel"><div class="panel-head"><div><h2 class="panel-title">${result.earnings < 0 ? 'Patrimônio e perda' : 'De onde vem seu patrimônio'}</h2><p class="panel-subtitle">Composição desta simulação, em valores brutos</p></div></div><div class="chart-area"><canvas id="dashboard-composition" role="img" aria-label="Composição do patrimônio. Valores abaixo."></canvas></div><dl class="deduction-list"><dt>Capital inicial</dt><dd>${currency(input.initial)}</dd><dt>Aportes mensais acumulados</dt><dd>${currency(result.contributions)}</dd><dt>${result.earnings < 0 ? 'Perda' : 'Rendimentos brutos'}</dt><dd>${currency(result.earnings)}</dd></dl></div></div><section class="panel wide-panel"><div class="panel-head"><div><h2 class="panel-title">E se o cenário mudar?</h2><p class="panel-subtitle">Ajuste três taxas anuais efetivas hipotéticas. Capital, aportes e prazo permanecem os da simulação.</p></div><span class="panel-icon">${icon('sliders')}</span></div><p class="field-hint mb-4">As taxas sugeridas se limitam a 100% a.a.; podem ser ajustadas abaixo.</p><form id="scenario-form" novalidate><div class="scenario-fields">${field('pessimistic', 'Pessimista · taxa anual', Math.max(isCrypto(input.type) ? -99.99 : 0, scenarioBase - 3), { suffix: '% a.a.' })}${field('moderate', 'Moderado · taxa anual', scenarioBase, { suffix: '% a.a.' })}${field('optimistic', 'Otimista · taxa anual', Math.min(100, scenarioBase + 3), { suffix: '% a.a.' })}</div><button type="submit" class="button light">Atualizar cenários ${icon('arrow')}</button><p id="scenario-dirty" class="field-hint" role="status" hidden>Taxas alteradas. Atualize os cenários para aplicar.</p></form><div id="scenario-results" class="section-spacing"></div></section><div class="results">${deductions(input, result)}${yearlyTable(result)}${disclaimer()}</div>`;
+  main.innerHTML = heading('COMPOSIÇÃO E ANÁLISE DE HIPÓTESES', 'Dashboard de cenários', 'Uma visão da última simulação válida. Cada indicador conta uma parte da história.') + `${resultHero(input, result)}<div class="section-spacing">${metrics(input, result)}</div><div class="dashboard-grid"><div class="panel chart-panel"><div class="panel-head"><div><h2 class="panel-title">Evolução do patrimônio</h2><p class="panel-subtitle">Projeção bruta · ${esc(PRODUCTS[input.type].name)}</p></div><span class="chart-tag">${input.months} meses</span></div><div class="chart-area"><canvas id="dashboard-line" role="img" aria-label="Evolução patrimonial. Valores na tabela de evolução."></canvas></div></div><div class="panel chart-panel"><div class="panel-head"><div><h2 class="panel-title">${result.earnings < 0 ? 'Patrimônio e perda' : 'De onde vem seu patrimônio'}</h2><p class="panel-subtitle">Composição desta simulação, em valores brutos</p></div></div><div class="chart-area"><canvas id="dashboard-composition" role="img" aria-label="Composição do patrimônio. Valores abaixo."></canvas></div><dl class="deduction-list"><dt>Capital inicial</dt><dd>${currency(input.initial)}</dd><dt>Aportes mensais acumulados</dt><dd>${currency(result.contributions)}</dd><dt>${result.earnings < 0 ? 'Perda' : 'Rendimentos brutos'}</dt><dd>${currency(result.earnings)}</dd></dl></div></div><section class="panel wide-panel"><div class="panel-head"><div><h2 class="panel-title">E se o cenário mudar?</h2><p class="panel-subtitle">Ajuste três taxas anuais efetivas hipotéticas. Capital, aportes e prazo permanecem os da simulação.</p></div><span class="panel-icon">${icon('sliders')}</span></div><p class="field-hint mb-4">As taxas sugeridas se limitam a 100% a.a.; podem ser ajustadas abaixo.</p><form id="scenario-form" novalidate><div class="scenario-fields">${field('pessimistic', 'Pessimista · taxa anual', Math.max(isCrypto(input.type) ? -99.99 : 0, scenarioBase - 3), { suffix: '% a.a.' })}${field('moderate', 'Moderado · taxa anual', scenarioBase, { suffix: '% a.a.' })}${field('optimistic', 'Otimista · taxa anual', Math.min(100, scenarioBase + 3), { suffix: '% a.a.' })}</div><button type="submit" class="button light">Atualizar cenários ${icon('arrow')}</button><p id="scenario-dirty" class="field-hint" role="status" hidden>Taxas alteradas. Atualize os cenários para aplicar.</p></form><div id="scenario-results" class="section-spacing"></div></section><div class="results">${deductions(input, result)}${yearlyTable(result)}${disclaimer()}</div>`;
   evolution('dashboard-line', [{ input, result }]);
   composition('dashboard-composition', input, result);
   const form = $('#scenario-form');
@@ -233,7 +246,7 @@ function renderDashboard() {
 }
 
 function renderHistory() {
-  main.innerHTML = heading('RETOME DE ONDE SONHOU', 'Planos que merecem ficar.', 'Suas simulações salvas, prontas para uma nova perspectiva.') + `<div id="history-content"></div>`;
+  main.innerHTML = heading('CENÁRIOS SALVOS NESTE NAVEGADOR', 'Histórico de simulações', 'Suas simulações salvas, prontas para uma nova perspectiva.') + `<div id="history-content"></div>`;
   let records;
   try { records = readHistory(); } catch (error) {
     $('#history-content').innerHTML = `<div class="panel empty-state">${icon('info')}<h2>Não foi possível ler o histórico</h2><p>${esc(storageMessage(error))}</p><a class="button primary" href="#simulador">Continuar simulando ${icon('arrow')}</a></div>`;
@@ -247,6 +260,36 @@ function renderHistory() {
     const result = simulate(record.input);
     return `<tr><td><input class="accent-forest h-4 w-4" type="checkbox" name="saved" value="${esc(record.id)}" aria-label="Selecionar ${esc(record.name)}" /></td><td><strong>${esc(record.name)}</strong><small>${new Date(record.createdAt).toLocaleDateString('pt-BR')} · ${esc(PRODUCTS[record.input.type].name)}</small></td><td>${currency(record.input.initial)} + ${currency(record.input.monthly)}/mês<small>${record.input.months} meses · ${esc(rateDescription(record.input))}</small></td><td>${currency(result.gross)}<small>${percent(result.accumulated)} bruto acumulado</small></td><td><div class="history-actions"><button class="button" data-open="${esc(record.id)}">Abrir</button><button class="button danger" data-delete="${esc(record.id)}" aria-label="Excluir ${esc(record.name)}">${icon('trash')}</button></div></td></tr>`;
   }).join('')}</tbody></table></div><p class="field-hint mt-3">Selecione de 2 a 6 registros para comparar. Capital, aporte, data e prazo diferentes serão identificados. Limpar os dados do navegador apaga o histórico.</p><div id="saved-results" class="compare-results section-spacing"></div>`;
+  const filters = document.createElement('section');
+  filters.className = 'panel history-filters';
+  filters.setAttribute('aria-label', 'Filtrar histórico');
+  filters.innerHTML = `<div class="history-search"><label for="history-search">Buscar por nome ou modalidade</label><input id="history-search" type="search" placeholder="Ex.: Plano de longo prazo" /></div><div class="filter-options" role="group" aria-label="Modalidade">${[['all','Todos'],['cdb','CDB'],['lci','LCI/LCA'],['treasury','Tesouro'],['crypto','Cripto']].map(([value,label]) => `<button type="button" data-history-filter="${value}" aria-pressed="${value === 'all'}">${label}</button>`).join('')}</div>`;
+  $('#history-content').prepend(filters);
+  const noMatches = document.createElement('p');
+  noMatches.className = 'field-hint';
+  noMatches.setAttribute('role', 'status');
+  noMatches.textContent = 'Nenhuma simulação corresponde aos filtros.';
+  noMatches.hidden = true;
+  filters.after(noMatches);
+  let selectedType = 'all';
+  const filterHistory = () => {
+    const query = $('#history-search').value.trim().toLocaleLowerCase('pt-BR');
+    let visible = 0;
+    for (const checkbox of main.querySelectorAll('input[name=saved]')) {
+      const record = records.find(item => item.id === checkbox.value);
+      const matchesType = selectedType === 'all' || (selectedType === 'crypto' ? isCrypto(record.input.type) : record.input.type === selectedType);
+      const matchesName = `${record.name} ${PRODUCTS[record.input.type].name}`.toLocaleLowerCase('pt-BR').includes(query);
+      checkbox.closest('tr').hidden = !matchesType || !matchesName;
+      if (matchesType && matchesName) visible++;
+    }
+    noMatches.hidden = visible !== 0;
+  };
+  $('#history-search').addEventListener('input', filterHistory);
+  filters.querySelectorAll('[data-history-filter]').forEach(button => button.addEventListener('click', () => {
+    selectedType = button.dataset.historyFilter;
+    filters.querySelectorAll('[data-history-filter]').forEach(item => item.setAttribute('aria-pressed', String(item === button)));
+    filterHistory();
+  }));
   const selection = () => [...main.querySelectorAll('input[name=saved]:checked')].map(el => el.value);
   main.querySelectorAll('input[name=saved]').forEach(el => el.addEventListener('change', () => {
     const count = selection().length;
@@ -276,8 +319,25 @@ function renderHistory() {
 }
 
 function renderHome() {
-  const sample = simulate(defaults());
-  main.innerHTML = `<section class="panel intro-hero"><div><div class="eyebrow">UM LABORATÓRIO DE POSSIBILIDADES</div><h1>O futuro se constrói.<br>Um mês de cada vez.</h1><p>Transforme perguntas sobre dinheiro em perspectivas para o amanhã. Simule, compare e descubra o poder de começar.</p><a class="button primary" href="#simulador">Explore seu próximo plano ${icon('arrow')}</a></div><div class="intro-visual" aria-label="Exemplo hipotético de investimento"><div class="mini-card"><small>UMA POSSIBILIDADE EM 20 ANOS · BRUTO</small><strong>${currency(sample.gross)}</strong><small>R$ 5 mil iniciais + R$ 500/mês · 10% a.a. hipotéticos</small><div class="mini-bars" aria-hidden="true">${[20, 27, 34, 42, 53, 65, 80, 100].map(height => `<span style="--h:${height}%"></span>`).join('')}</div></div></div></section><div class="feature-grid">${[['sliders', 'Simule o amanhã', 'Descubra como aportes, taxas e tempo podem transformar seu patrimônio.', 'simulador', 'Começar a simular'], ['compare', 'Encontre perspectivas', 'CDB, LCI/LCA, Tesouro e cripto. Explore as diferenças com as mesmas premissas.', 'comparador', 'Comparar investimentos'], ['clock', 'Guarde seus planos', 'Salve cenários, retome suas hipóteses e acompanhe suas possibilidades.', 'historico', 'Ver meu histórico']].map(([symbol, title, text, route, cta]) => `<section class="panel feature-card"><span class="panel-icon inline-flex">${icon(symbol)}</span><h2>${title}</h2><p>${text}</p><a class="subtle-link" href="#${route}">${cta}${icon('arrow')}</a></section>`).join('')}</div><div class="section-spacing">${disclaimer()}</div>`;
+  const sampleInput = { ...defaults(), initial: 1000, monthly: 300, months: 120, rate: 10 };
+  const sample = simulate(sampleInput);
+  main.innerHTML = `
+    <section class="home-hero">
+      <div><span class="home-badge">${icon('sprout')} EDUCAÇÃO FINANCEIRA BASEADA EM HIPÓTESES</span><h1>Aprenda como o tempo e os juros compostos transformam seus recursos.</h1><p>Entenda como aportes mensais, taxas e deduções influenciam seu patrimônio. Explore cenários, compare possibilidades e descubra a matemática por trás de cada projeção.</p><div class="hero-actions"><a class="button primary" href="#simulador">Abrir simulador completo ${icon('arrow')}</a><a class="button" href="#comparador">${icon('compare')} Comparar 4 cenários</a><a class="subtle-link" href="#historico">${icon('clock')} Ver histórico</a></div></div>
+      <aside class="panel principle-card" aria-label="Princípio dos juros compostos"><header><span>PRINCÍPIO FUNDAMENTAL</span><span class="chip">Fórmula</span></header><div class="principle-equation">M = C × (1 + i)<sup>t</sup></div><p>Sem aportes adicionais, o capital <strong>C</strong> cresce à taxa <strong>i</strong> por <strong>t</strong> períodos. Os juros de cada período passam a participar dos próximos rendimentos.</p><div class="principle-note">${icon('shield')} Sem vendas de ativos. Só aprendizado.</div></aside>
+    </section>
+    <section class="panel home-sample" aria-labelledby="sample-heading"><div class="panel-head"><div><h2 id="sample-heading" class="panel-title">Exemplo de projeção rápida</h2><p class="panel-subtitle">Uma hipótese simples para enxergar o efeito dos aportes ao longo de dez anos.</p></div><div class="parameter-chips"><span>Capital: R$ 1.000,00</span><span>Aporte: R$ 300,00/mês</span><span>Prazo: 10 anos</span><span>Taxa: 10% a.a. hipotéticos</span></div></div>
+      <div class="home-metrics">${metric('Total investido', currency(sample.invested), 'Capital inicial + aportes mensais', 'wallet')}${metric('Rendimentos brutos', currency(sample.earnings), 'Antes de impostos e custos', 'up', 'positive')}${metric('Patrimônio final bruto', currency(sample.gross), 'Projeção ao final de 120 meses', 'growth')}${metric('Rentabilidade acumulada', percent(sample.accumulated), 'Rendimento ÷ total investido', 'coins', 'positive')}</div>
+      <div class="home-chart-heading"><h3>O crescimento acontece mês a mês</h3><p class="field-hint">Linha contínua: patrimônio bruto. Linha tracejada: total investido.</p></div><div class="chart-area"><canvas id="home-chart" role="img" aria-label="Evolução do exemplo: capital de mil reais, aporte de trezentos por mês e dez anos. Valores resumidos acima e evolução detalhada abaixo."></canvas></div><div class="section-spacing">${yearlyTable(sample)}</div><div class="results-toolbar section-spacing"><p class="field-hint">Aportes no final do mês. Taxa constante e configurável.</p><button id="explore-sample" type="button" class="button light">Explorar este exemplo ${icon('arrow')}</button></div>
+    </section>
+    <section class="feature-section" aria-labelledby="tools-heading"><h2 id="tools-heading">Explore nossas ferramentas de cálculo</h2><div class="feature-grid">${[['sliders','Simulador de investimentos','Configure capital, aporte, prazo e taxa. Entenda a evolução e as deduções consideradas.','simulador','Criar uma simulação'],['compare','Comparador de alternativas','Compare quatro modalidades com a mesma base e hipóteses explícitas.','comparador','Comparar cenários'],['grid','Dashboard de cenários','Visualize a composição do patrimônio e explore cenários pessimista, moderado e otimista.','dashboard','Abrir dashboard']].map(([symbol,title,text,route,cta]) => `<article class="panel feature-card"><span class="panel-icon">${icon(symbol)}</span><h3>${title}</h3><p>${text}</p><a class="subtle-link" href="#${route}">${cta} ${icon('arrow')}</a></article>`).join('')}</div></section>
+    <section class="steps-section" aria-labelledby="steps-heading"><h2 id="steps-heading">O básico em três passos didáticos</h2><div class="steps-grid"><div><div class="step-number">01 · DEFINA O PONTO DE PARTIDA</div><h3>Comece com suas hipóteses</h3><p>Informe quanto pretende investir, o aporte mensal e por quanto tempo.</p></div><div><div class="step-number">02 · EXPLORE OS RESULTADOS</div><h3>Compare com contexto</h3><p>Leia as taxas, as deduções e os limites antes de interpretar uma projeção.</p></div><div><div class="step-number">03 · APRENDA E REVISITE</div><h3>Guarde novas perspectivas</h3><p>Salve cenários e volte para entender o efeito de cada mudança.</p></div></div></section>${disclaimer()}`;
+  evolution('home-chart', [{ input: sampleInput, result: sample }]);
+  $('#explore-sample').addEventListener('click', () => {
+    currentInput = { ...sampleInput };
+    currentResult = simulate(currentInput);
+    location.hash = 'simulador';
+  });
 }
 
 function renderAssumptions() {
@@ -301,7 +361,10 @@ $('#save-form').addEventListener('submit', event => {
 $('[data-close-dialog]').addEventListener('click', () => $('#save-dialog').close());
 
 function renderRoute(focus = false) {
-  const route = location.hash.slice(1) || 'simulador';
+  const route = location.hash.slice(1) || authUI.initialRoute();
+  if (!location.hash) history.replaceState(null, '', '#' + route);
+  document.body.classList.toggle('access-screen', route === 'login');
+  document.body.dataset.route = route;
   if (!routeNames[route]) { location.replace('#simulador'); return; }
   clearCharts();
   $('#breadcrumb').textContent = routeNames[route];

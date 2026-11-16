@@ -9,7 +9,7 @@ import { JSDOM } from 'jsdom';
 const bundled = await build({ entryPoints: ['js/app.js'], bundle: true, write: false, format: 'iife', loader: { '.css': 'empty' }, plugins: [{ name: 'charts-test-double', setup(builder) { builder.onLoad({ filter: /[\\/]charts\.js$/ }, () => ({ contents: 'export function clearCharts(){}; export function comparisonChart(){}; export function composition(){}; export function evolution(){};', loader: 'js' })); } }] });
 const html = (await readFile(new URL('../index.html', import.meta.url), 'utf8')).replace(/<script type="module"[^>]+><\/script>/, '');
 
-function app(hash = '', storageRaw = null, accountData = {}, configure = () => {}) {
+function app(hash = '#simulador', storageRaw = null, accountData = {}, configure = () => {}) {
   const dom = new JSDOM(html, { url: 'http://localhost/' + hash, runScripts: 'outside-only', pretendToBeVisual: true });
   const { window } = dom;
   window.scrollTo = () => {};
@@ -209,6 +209,113 @@ test('pular para o conteúdo mantém a rota e os resultados e foca o conteúdo',
   } finally { a.dom.window.close(); }
 });
 
+test('entrada sem sessão mostra login antes do início e permite continuar como convidado', async () => {
+  const a = app('');
+  try {
+    assert.equal(a.window.location.hash, '#login');
+    assert.ok(a.document.querySelector('#login-form'));
+    assert.equal(a.document.body.classList.contains('access-screen'), true);
+    const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
+    a.document.querySelector('#continue-guest').click(); await changed;
+    assert.equal(a.window.location.hash, '#inicio');
+    assert.ok(a.document.querySelector('#home-chart'));
+    assert.equal(a.document.body.classList.contains('access-screen'), false);
+    assert.equal(a.window.localStorage.getItem('investlab.session.v1'), null);
+    await a.navigate('simulador');
+    a.submit();
+    assert.ok(a.document.querySelector('#save-current'));
+  } finally { a.dom.window.close(); }
+});
+
+test('login de entrada abre início e sessão existente evita repetir a tela de acesso', async () => {
+  const a = app('');
+  try {
+    a.document.querySelector('#fill-demo').click();
+    assert.equal(a.document.querySelector('#email').value, 'usuario@investlab.local');
+    assert.equal(a.document.querySelector('#password').type, 'password');
+    a.document.querySelector('#toggle-password').click();
+    assert.equal(a.document.querySelector('#password').type, 'text');
+    assert.equal(a.document.querySelector('#toggle-password').getAttribute('aria-pressed'), 'true');
+    a.document.querySelector('#toggle-password').click();
+    assert.equal(a.document.querySelector('#password').type, 'password');
+    const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
+    a.submit(); await changed;
+    assert.equal(a.window.location.hash, '#inicio');
+    assert.ok(a.document.querySelector('#home-chart'));
+    const reloaded = app('', null, accountData(a));
+    try {
+      assert.equal(reloaded.window.location.hash, '#inicio');
+      assert.equal(reloaded.document.querySelector('#login-form'), null);
+      assert.ok(reloaded.document.querySelector('#logout'));
+    } finally { reloaded.dom.window.close(); }
+  } finally { a.dom.window.close(); }
+});
+
+test('exemplo do início transfere parâmetros reais para o simulador', async () => {
+  const a = app('#inicio');
+  try {
+    const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
+    a.document.querySelector('#explore-sample').click(); await changed;
+    assert.equal(a.document.querySelector('#initial').value, '1.000');
+    assert.equal(a.document.querySelector('#monthly').value, '300');
+    assert.equal(a.document.querySelector('#duration').value, '10');
+    assert.equal(a.document.querySelector('#rate').value, '10');
+    assert.equal(a.document.querySelector('#stale-sim').hidden, true);
+  } finally { a.dom.window.close(); }
+});
+
+test('redefinir simulador restaura o exemplo sem apagar histórico salvo', () => {
+  const a = app();
+  try {
+    a.document.querySelector('#save-current').click();
+    a.document.querySelector('#simulation-name').value = 'Preservar no reset';
+    a.submit(a.document.querySelector('#save-form'));
+    const history = a.window.localStorage.getItem('investlab.simulations.v1');
+    a.set('monthly', '900'); a.submit();
+    a.document.querySelector('#reset-sim').click();
+    assert.equal(a.document.querySelector('#monthly').value, '500');
+    assert.match(a.document.querySelector('[data-testid=gross-result]').textContent, /392\.767,11/);
+    assert.equal(a.window.localStorage.getItem('investlab.simulations.v1'), history);
+  } finally { a.dom.window.close(); }
+});
+
+test('sincronização explícita do comparador recupera a base da última simulação', () => {
+  const a = app('#comparador');
+  try {
+    a.set('monthly', '900'); a.submit();
+    a.document.querySelector('#sync-comparison').click();
+    assert.equal(a.document.querySelector('#monthly').value, '500');
+    assert.match(a.document.querySelector('#compare-results').textContent, /392\.767,11/);
+  } finally { a.dom.window.close(); }
+});
+
+test('busca e filtros do histórico exibem registros corretos sem alterar armazenamento', async () => {
+  const a = app();
+  try {
+    for (const [name, type] of [['Plano Alpha', 'cdb'], ['Plano Beta', 'bitcoin']]) {
+      a.set('type', type); a.submit();
+      a.document.querySelector('#save-current').click();
+      a.document.querySelector('#simulation-name').value = name;
+      a.submit(a.document.querySelector('#save-form'));
+    }
+    const history = a.window.localStorage.getItem('investlab.simulations.v1');
+    await a.navigate('historico');
+    const visibleRows = () => [...a.document.querySelectorAll('#history-content tbody tr')].filter(row => !row.hidden);
+    const query = a.document.querySelector('#history-search');
+    query.value = 'alpha'; query.dispatchEvent(new a.window.Event('input'));
+    assert.equal(visibleRows().length, 1);
+    assert.match(visibleRows()[0].textContent, /Plano Alpha/);
+    query.value = ''; query.dispatchEvent(new a.window.Event('input'));
+    a.document.querySelector('[data-history-filter=crypto]').click();
+    assert.equal(visibleRows().length, 1);
+    assert.match(visibleRows()[0].textContent, /Plano Beta/);
+    query.value = 'inexistente'; query.dispatchEvent(new a.window.Event('input'));
+    assert.equal(visibleRows().length, 0);
+    assert.equal(a.document.querySelector('#history-content [role=status]').hidden, false);
+    assert.equal(a.window.localStorage.getItem('investlab.simulations.v1'), history);
+  } finally { a.dom.window.close(); }
+});
+
 const accountKey = 'investlab.account.v1';
 const sessionKey = 'investlab.session.v1';
 const accountData = a => Object.fromEntries([accountKey, sessionKey].flatMap(key => {
@@ -222,6 +329,7 @@ async function enterAccount(a) {
   const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
   a.submit();
   await changed;
+  if (a.window.location.hash !== '#perfil') await a.navigate('perfil');
 }
 
 test('login, perfil, cancelamento, recarga e logout preservam dados e histórico', async () => {
@@ -252,7 +360,7 @@ test('login, perfil, cancelamento, recarga e logout preservam dados e histórico
     const history = a.window.localStorage.getItem('investlab.simulations.v1');
     const changed = new Promise(resolve => a.window.addEventListener('hashchange', resolve, { once: true }));
     a.document.querySelector('#logout').click(); await changed;
-    assert.equal(a.window.location.hash, '#inicio');
+    assert.equal(a.window.location.hash, '#login');
     assert.equal(a.window.localStorage.getItem(sessionKey), null);
     assert.equal(a.window.localStorage.getItem('investlab.simulations.v1'), history);
     const signedOut = app('#login', history, accountData(a));
@@ -261,6 +369,7 @@ test('login, perfil, cancelamento, recarga e logout preservam dados e histórico
       signedOut.set('email', 'ana@example.com'); signedOut.set('password', 'InvestLab123!');
       const entered = new Promise(resolve => signedOut.window.addEventListener('hashchange', resolve, { once: true }));
       signedOut.submit(); await entered;
+      await signedOut.navigate('perfil');
       assert.equal(signedOut.document.querySelector('#bio').value, '<img src=x onerror=alert(1)>');
     } finally { signedOut.dom.window.close(); }
   } finally { a.dom.window.close(); }
